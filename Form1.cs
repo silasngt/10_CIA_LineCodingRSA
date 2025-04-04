@@ -11,6 +11,7 @@ namespace CIA_10_LineCodingRSA
 {
     public partial class Form1 : Form
     {
+        
         public Form1()
         {
             InitializeComponent();
@@ -24,6 +25,7 @@ namespace CIA_10_LineCodingRSA
         }
         private bool active_key = false;
         private bool decryptable = false;
+        private string encodedBase64;
 
         int p, q, n, e, d, phi_n;
 
@@ -108,6 +110,11 @@ namespace CIA_10_LineCodingRSA
             txtq.Enabled = false;
          
         }
+
+
+
+
+
 
         #region "Hàm tạo số ngẫu nhiên từ 2->10000"
         private int soNgauNhien()
@@ -222,59 +229,177 @@ namespace CIA_10_LineCodingRSA
             return s;
         }
         #endregion
+        #region "Các hàm liên quan đến mã hóa Morse"
+        private static readonly Dictionary<char, string> MorseCodeDictionary = new Dictionary<char, string>
+        {
+            {'A', ".-"}, {'B', "-..."}, {'C', "-.-."}, {'D', "-.."}, {'E', "."}, {'F', "..-."},
+            {'G', "--."}, {'H', "...."}, {'I', ".."}, {'J', ".---"}, {'K', "-.-"}, {'L', ".-.."},
+            {'M', "--"}, {'N', "-."}, {'O', "---"}, {'P', ".--."}, {'Q', "--.-"}, {'R', ".-."},
+            {'S', "..."}, {'T', "-"}, {'U', "..-"}, {'V', "...-"}, {'W', ".--"}, {'X', "-..-"},
+            {'Y', "-.--"}, {'Z', "--.."}, {'1', ".----"}, {'2', "..---"}, {'3', "...--"},
+            {'4', "....-"}, {'5', "....."}, {'6', "-...."}, {'7', "--..."}, {'8', "---.."},
+            {'9', "----."}, {'0', "-----"}, {' ', "/"}, {'!', "-.-.--"}, {'.', ".-.-.-"},
+            {',', "--..--"}
+        };
+
+        private static string EncodeToMorse(string input)
+        {
+            var morseCode = new StringBuilder();
+            foreach (var ch in input.ToUpper())
+            {
+                if (MorseCodeDictionary.ContainsKey(ch))
+                {
+                    morseCode.Append(MorseCodeDictionary[ch]);
+                    morseCode.Append(" "); // Thêm khoảng trắng giữa các ký tự
+                }
+                else if (ch == ' ')
+                {
+                    morseCode.Append("/ "); // Dấu phân cách giữa các từ
+                }
+            }
+            return morseCode.ToString().Trim();
+        }
+
+        // Hàm hỗ trợ giải mã Morse - đảm bảo phương thức này hoạt động chính xác
+        private static string DecodeFromMorse(string morseCode)
+        {
+            if (string.IsNullOrEmpty(morseCode))
+                return string.Empty;
+
+            var parts = morseCode.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var decodedMessage = new StringBuilder();
+
+            foreach (var part in parts)
+            {
+                if (part == "/")
+                {
+                    decodedMessage.Append(' '); // Khoảng trắng giữa các từ
+                }
+                else
+                {
+                    // Tìm ký tự tương ứng với mã Morse
+                    bool found = false;
+                    foreach (var entry in MorseCodeDictionary)
+                    {
+                        if (entry.Value == part)
+                        {
+                            decodedMessage.Append(entry.Key);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    // Nếu không tìm thấy, có thể là do lỗi trong quá trình mã hóa
+                    if (!found)
+                    {
+                        decodedMessage.Append('?');
+                    }
+                }
+            }
+
+            return decodedMessage.ToString();
+        }
+
+
+        #endregion
         #region "Hàm Mã hóa"
         public void MaHoa(string s)
         {
             taoKhoa();
-            // Chuyen xau thanh ma Unicode
+
+            // Chuyển đổi văn bản gốc sang mã Morse
+            string morseCode = EncodeToMorse(s);
+
+            // Hiển thị mã Unicode trong ô bên cạnh (giữ nguyên như cũ)
             int[] nguyen = new int[s.Length];
             for (int i = 0; i < s.Length; i++)
             {
                 nguyen[i] = (int)s[i];
             }
             txt_ma_ban_ro.Text = chuoi(nguyen);
-            //Mảng a chứa các kí tự đã mã hóa
+
+            // Mã hóa RSA trên mã Unicode như trước đây
             int[] a = new int[nguyen.Length];
             for (int i = 0; i < nguyen.Length; i++)
             {
                 a[i] = mod(nguyen[i], e, n);
             }
-           txt_ma_ban_ma.Text = chuoi(a);
-            //Chuyển sang kiểu kí tự trong bảng mã Unicode
+            txt_ma_ban_ma.Text = chuoi(a);
+
+            // Chuyển sang kiểu ký tự Unicode và mã hóa Base64 như cũ
             string str = "";
             for (int i = 0; i < nguyen.Length; i++)
             {
                 str = str + (char)a[i];
             }
             byte[] data = Encoding.Unicode.GetBytes(str);
-            txt_banma.Text = Convert.ToBase64String(data);
+
+            // Lưu chuỗi Base64 vào biến để sử dụng khi giải mã
+            encodedBase64 = Convert.ToBase64String(data);
+
+            // Hiển thị mã Morse trong ô bản mã hóa
+            txt_banma.Text = morseCode;
         }
+
+
         #endregion
         #region "Hàm giải mã"
-        public void GiaiMa(string s)
+        public void GiaiMa(string morsecode)
         {
-            //Lấy mã Unicode của từng kí tự mã hóa
-            string giaima = Encoding.Unicode.GetString(Convert.FromBase64String(s));
-            int[] b = new int[giaima.Length];
-            for (int i = 0; i < giaima.Length; i++)
+            try
             {
-                b[i] = (int)giaima[i];
+                // Lấy giá trị Base64 đã lưu trữ để giải mã RSA
+                if (string.IsNullOrEmpty(encodedBase64))
+                {
+                    MessageBox.Show("Không có dữ liệu mã hóa RSA để giải mã. Vui lòng mã hóa trước.", "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // Giải mã RSA từ chuỗi Base64 đã lưu
+                string giaima = Encoding.Unicode.GetString(Convert.FromBase64String(encodedBase64));
+                int[] b = new int[giaima.Length];
+                for (int i = 0; i < giaima.Length; i++)
+                {
+                    b[i] = (int)giaima[i];
+                }
+
+                // Giải mã RSA
+                int[] c = new int[b.Length];
+                for (int i = 0; i < c.Length; i++)
+                {
+                    c[i] = mod(b[i], d, n);
+                }
+                txt_ma_giai_ma.Text = chuoi(c);
+
+                // Chuyển về chuỗi Unicode
+                string unicode = "";
+                for (int i = 0; i < c.Length; i++)
+                {
+                    unicode += (char)c[i];
+                }
+
+                // Đồng thời, giải mã Morse từ chuỗi đã hiển thị trong ô bản mã hóa
+                string decodedMorse = DecodeFromMorse(morsecode).ToLower();
+                txt_giaima.Text = decodedMorse;
+
+                // Kiểm tra xem kết quả giải mã RSA và giải mã Morse có khớp nhau không
+                // (Đây là kiểm tra tùy chọn, bạn có thể bỏ nếu không cần)
+
+                if (unicode != decodedMorse)
+                {
+                    MessageBox.Show("Cảnh báo: Kết quả giải mã RSA và giải mã Morse không khớp nhau.", "Cảnh báo", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+
             }
-            //Giải mã
-            int[] c = new int[b.Length];
-            for (int i = 0; i < c.Length; i++)
+            catch (Exception ex)
             {
-                c[i] = mod(b[i], d, n);
+                MessageBox.Show("Lỗi khi giải mã: " + ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            txt_ma_giai_ma.Text = chuoi(c);
-            string str = "";
-            for (int i = 0; i < c.Length; i++)
-            {
-                str = str + (char)c[i];
-            }
-            txt_giaima.Text = str;
         }
         #endregion
+
+
+
 
 
 
@@ -347,14 +472,14 @@ namespace CIA_10_LineCodingRSA
             if (decryptable == false)
                 MessageBox.Show("Bạn phải tạo khóa trước ", "Thông Báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
             else
-            try
-            {
-                GiaiMa(txt_banma.Text);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
+                try
+                {
+                    GiaiMa(txt_banma.Text);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
         }
 
         private void btnmahoamoi_Click(object sender, EventArgs e)
